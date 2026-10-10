@@ -1,0 +1,123 @@
+from dataclasses import dataclass
+
+@dataclass 
+class Pointers:
+    INST_PTR: int
+    DATA_PTR_1: int
+    DATA_PTR_2: int
+    ACTIVE: int = 1
+
+    @property
+    def data_ptr(self):
+        return self.DATA_PTR_1 if self.ACTIVE == 1 else self.DATA_PTR_2
+
+    @data_ptr.setter
+    def data_ptr(self, value):
+        if self.ACTIVE == 1:
+            self.DATA_PTR_1 = value
+        else:
+            self.DATA_PTR_2 = value
+
+SYMBOLS = {
+    "0": 0,
+    "1": 1,
+    "s": 2,
+    "a": 3,
+    "b": 4,
+    "+": 5,
+    "<": 6,
+    ">": 7,
+    "X": 8,
+    "_": 15,
+}
+
+INSTRUCTIONS = {code: symbol for symbol, code in SYMBOLS.items()}
+
+def convert_int_to_binary(x):
+    assert x <= 15, "only instructions can be converted"
+    return [(x >> i) & 1 for i in range(3, -1, -1)]
+
+def convert_program_to_binary(program: str):
+    program_list = []
+    for char in program:
+        code = SYMBOLS[char]
+        value = convert_int_to_binary(code)
+        program_list.extend(value)
+    return program_list
+
+def binary_to_inst(binary_array):
+    assert len(binary_array) == 4, "instructions should be 4 bit"
+    code = 0
+    for bit in binary_array:
+        code = (code << 1) | bit
+    return INSTRUCTIONS.get(code, "_")
+
+
+DATA_DIGITS = {"0": 0, "1": 1}
+INST_DIGITS = {"a": 0, "b": 1}
+
+
+def read_literal(tape, start, digits):
+    value = 0
+    pos = start
+    while pos + 4 <= len(tape):
+        symbol = binary_to_inst(tape[pos: pos + 4])
+        if symbol not in digits:
+            break
+        value = (value << 1) | digits[symbol]
+        pos += 4
+    return value
+
+
+def step(tape, POINTERS):
+    instruction = binary_to_inst(tape[POINTERS.INST_PTR: POINTERS.INST_PTR + 4])
+    size = len(tape)
+    jumped = False
+
+    match instruction:
+        case "0" | "1":
+            target = read_literal(tape, POINTERS.INST_PTR, DATA_DIGITS)
+            if tape[POINTERS.data_ptr] == 0:
+                POINTERS.data_ptr = target % size
+        case "a" | "b":
+            target = read_literal(tape, POINTERS.INST_PTR, INST_DIGITS)
+            if tape[POINTERS.data_ptr] == 0:
+                POINTERS.INST_PTR = (target * 4) % size
+                jumped = True
+        case "s":
+            POINTERS.ACTIVE = 2 if POINTERS.ACTIVE == 1 else 1
+        case "+":
+            tape[POINTERS.data_ptr] ^= 1
+        case "<":
+            POINTERS.data_ptr = (POINTERS.data_ptr - 1) % size
+        case ">":
+            POINTERS.data_ptr = (POINTERS.data_ptr + 1) % size
+        case "X":
+            return False
+        case "_":
+            pass
+
+    if not jumped:
+        POINTERS.INST_PTR = (POINTERS.INST_PTR + 4) % size
+
+    return True
+
+
+def interpret(program: str, data_tape_length: int, max_steps):
+    data_tape = [1, ] * data_tape_length
+    tape = convert_program_to_binary(program)
+    print(tape)
+    POINTERS = Pointers(0, len(tape), len(tape))
+    tape.extend(data_tape)
+    print(POINTERS)
+    print(tape)
+    for i in range(max_steps):
+        step(tape, POINTERS)
+
+    
+
+
+if __name__ == "__main__":
+    print(convert_int_to_binary(9))
+    interpret("+++", 8, 8)
+    
