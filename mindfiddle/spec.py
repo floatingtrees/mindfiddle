@@ -114,25 +114,24 @@ def step(tape, POINTERS):
     return True
 
 
-def interpret(program: str, data_tape_length: int, max_steps):
+def interpret(program: str, data_tape: list, max_steps):
     tape = convert_program_to_binary(program)
     program_length = len(tape)
     POINTERS = Pointers(0, program_length, program_length)
-    tape.extend([1] * data_tape_length)
+    tape.extend(data_tape)
 
     for _ in range(max_steps):
         if not step(tape, POINTERS):
             break
 
-    data_tape = tape[program_length:]
     inst_tape = [
         binary_to_inst(tape[i: i + 4]) for i in range(0, program_length, 4)
     ]
-    return inst_tape, data_tape
+    return inst_tape, tape[program_length:]
 
 
 if __name__ == "__main__":
-    inst_tape, data_tape = interpret("+++", 8, 8)
+    inst_tape, data_tape = interpret("+++", [1] * 8, 8)
     print(inst_tape)
     print(data_tape)
     print(convert_tape_to_utf_8(data_tape))
