@@ -45,6 +45,17 @@ def convert_program_to_binary(program: str):
         program_list.extend(value)
     return program_list
 
+
+def convert_tape_to_utf_8(tape):
+    padded = tape + [0] * (-len(tape) % 8)
+    data = bytearray()
+    for i in range(0, len(padded), 8):
+        byte = 0
+        for bit in padded[i: i + 8]:
+            byte = (byte << 1) | bit
+        data.append(byte)
+    return data.decode("utf-8", errors="replace")
+
 def binary_to_inst(binary_array):
     assert len(binary_array) == 4, "instructions should be 4 bit"
     code = 0
@@ -104,20 +115,25 @@ def step(tape, POINTERS):
 
 
 def interpret(program: str, data_tape_length: int, max_steps):
-    data_tape = [1, ] * data_tape_length
     tape = convert_program_to_binary(program)
-    print(tape)
-    POINTERS = Pointers(0, len(tape), len(tape))
-    tape.extend(data_tape)
-    print(POINTERS)
-    print(tape)
-    for i in range(max_steps):
-        step(tape, POINTERS)
+    program_length = len(tape)
+    POINTERS = Pointers(0, program_length, program_length)
+    tape.extend([1] * data_tape_length)
 
-    
+    for _ in range(max_steps):
+        if not step(tape, POINTERS):
+            break
+
+    data_tape = tape[program_length:]
+    inst_tape = [
+        binary_to_inst(tape[i: i + 4]) for i in range(0, program_length, 4)
+    ]
+    return inst_tape, data_tape
 
 
 if __name__ == "__main__":
-    print(convert_int_to_binary(9))
-    interpret("+++", 8, 8)
+    inst_tape, data_tape = interpret("+++", 8, 8)
+    print(inst_tape)
+    print(data_tape)
+    print(convert_tape_to_utf_8(data_tape))
     
