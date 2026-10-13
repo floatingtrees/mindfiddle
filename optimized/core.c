@@ -51,17 +51,26 @@ inst_at(const unsigned char *tape, size_t pos)
 }
 
 static size_t
-read_literal(const unsigned char *tape, size_t size, size_t start, unsigned int low)
+read_literal(const unsigned char *tape, size_t size, size_t start, unsigned int low,
+             int *sign)
 {
     size_t value = 0;
     size_t pos = start;
+    int leading = 1;
 
+    *sign = 1;
     while (pos + 4 <= size) {
         unsigned int code = inst_at(tape, pos);
         if (code != low && code != low + 1) {
             break;
         }
-        value = (value * 2 + (code - low)) % size;
+        if (leading) {
+            *sign = (code == low) ? -1 : 1;
+            leading = 0;
+        }
+        else {
+            value = (value * 2 + (code - low)) % size;
+        }
         pos += 4;
     }
     return value;
@@ -167,23 +176,37 @@ core_interpret(PyObject *module, PyObject *args, PyObject *kwargs)
         switch (code) {
         case 0:
         case 1: {
-            size_t target = read_literal(tape, size, ip, 0);
+            int sign;
+            size_t magnitude = read_literal(tape, size, ip, 0, &sign);
             if (ptrs[active] >= size) {
                 error = ERROR_DATA_RANGE;
             }
             else if (tape[ptrs[active]] == 0) {
-                ptrs[active] = target;
+                size_t pos = ptrs[active];
+                if (sign > 0) {
+                    ptrs[active] = (pos + magnitude) % size;
+                }
+                else {
+                    ptrs[active] = (pos + size - magnitude) % size;
+                }
             }
             break;
         }
         case 3:
         case 4: {
-            size_t target = read_literal(tape, size, ip, 3);
+            int sign;
+            size_t magnitude = read_literal(tape, size, ip, 3, &sign);
             if (ptrs[active] >= size) {
                 error = ERROR_DATA_RANGE;
             }
             else if (tape[ptrs[active]] == 0) {
-                ip = (target * 4) % size;
+                size_t delta = (magnitude * 4) % size;
+                if (sign > 0) {
+                    ip = (ip + delta) % size;
+                }
+                else {
+                    ip = (ip + size - delta) % size;
+                }
                 jumped = 1;
             }
             break;

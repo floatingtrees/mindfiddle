@@ -98,7 +98,7 @@ def step(tape, POINTERS):
                 POINTERS.data_ptr = (POINTERS.data_ptr + offset) % size
         case "a" | "b":
             offset = read_literal(tape, POINTERS.INST_PTR, INST_DIGITS)
-            if tape[POINTERS.data_ptr] == 0:
+            if tape[POINTERS.data_ptr] == 0 and offset != 0:
                 POINTERS.INST_PTR = (POINTERS.INST_PTR + offset * 4) % size
                 jumped = True
         case "s":
