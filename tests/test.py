@@ -109,6 +109,52 @@ def run_trials(trials, seed, max_steps_cap):
     return failures, stats
 
 
+LONG_LITERAL_DIGITS = [1, 2, 31, 62, 63, 64, 65, 100, 200, 1000]
+LONG_LITERAL_TAPES = [[0] + [1] * 31, [1] * 32, [0] * 32, [1, 0] * 16]
+LONG_LITERAL_STEPS = [0, 1, 3, 50, 2000]
+
+
+def long_literal_programs():
+    for digits in LONG_LITERAL_DIGITS:
+        for symbol in "10ba":
+            yield symbol * digits
+    yield "1" * 70 + "0" * 70
+    yield "0" * 70 + "1" * 70
+    yield "b" * 70 + "a" * 70
+    yield "1" * 100 + "+" + "0" * 100
+    yield "ab" * 60
+    yield "10" * 60
+
+
+def run_long_literals():
+    failures = []
+    checks = 0
+    for program in long_literal_programs():
+        for source_tape in LONG_LITERAL_TAPES:
+            for max_steps in LONG_LITERAL_STEPS:
+                checks += 1
+                fast = outcome(interpret, program, list(source_tape), max_steps)
+                slow = outcome(interpret_python, program, list(source_tape), max_steps)
+                if fast != slow:
+                    failures.append(
+                        {
+                            "problem": "backends disagree",
+                            "program_length": len(program),
+                            "program_head": program[:60],
+                            "tape_length": len(source_tape),
+                            "max_steps": max_steps,
+                            "c": describe(fast),
+                            "python": describe(slow),
+                        }
+                    )
+    return failures, checks
+
+
+def test_long_literals():
+    failures, _ = run_long_literals()
+    assert not failures, failures[:3]
+
+
 def test_differential():
     failures, _ = run_trials(DEFAULT_TRIALS, DEFAULT_SEED, DEFAULT_MAX_STEPS)
     assert not failures, [failure["problem"] for failure in failures[:3]]
@@ -122,6 +168,8 @@ def main():
     args = parser.parse_args()
 
     failures, stats = run_trials(args.trials, args.seed, args.max_steps)
+    literal_failures, literal_checks = run_long_literals()
+    failures.extend(literal_failures)
 
     print("seed:            ", args.seed)
     print("trials:          ", stats["trials"])
@@ -136,6 +184,7 @@ def main():
     print("AssertionError:  ", stats["AssertionError"])
     print("IndexError:      ", stats["IndexError"])
     print("self modified:   ", stats["self_modified"])
+    print("long literals:   ", literal_checks, "checks")
     print("failures:        ", len(failures))
 
     for failure in failures[:5]:

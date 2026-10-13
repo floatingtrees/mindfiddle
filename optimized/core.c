@@ -1,8 +1,14 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && \
+    __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#define FAST_DECODE 1
+#endif
 
 #define ERROR_NONE 0
 #define ERROR_ALIGNMENT 1
@@ -46,34 +52,60 @@ code_to_symbol(unsigned int code)
 static unsigned int
 inst_at(const unsigned char *tape, size_t pos)
 {
+#ifdef FAST_DECODE
+    uint32_t packed;
+    memcpy(&packed, tape + pos, 4);
+    return (unsigned int)((packed * 0x08040201u) >> 24);
+#else
     return (unsigned int)((tape[pos] << 3) | (tape[pos + 1] << 2) |
                           (tape[pos + 2] << 1) | tape[pos + 3]);
+#endif
 }
 
-static size_t
-read_literal(const unsigned char *tape, size_t size, size_t start, unsigned int low,
-             int *sign)
+typedef struct {
+    size_t magnitude;
+    int sign;
+    int nonzero;
+} Literal;
+
+static Literal
+read_literal(const unsigned char *tape, size_t size, size_t start, unsigned int low)
 {
+    Literal out;
     size_t value = 0;
     size_t pos = start;
     int leading = 1;
+    int reduced = 0;
 
-    *sign = 1;
+    out.sign = 1;
+    out.nonzero = 0;
     while (pos + 4 <= size) {
         unsigned int code = inst_at(tape, pos);
         if (code != low && code != low + 1) {
             break;
         }
         if (leading) {
-            *sign = (code == low) ? -1 : 1;
+            out.sign = (code == low) ? -1 : 1;
             leading = 0;
         }
         else {
-            value = (value * 2 + (code - low)) % size;
+            unsigned int digit = code - low;
+            if (digit != 0) {
+                out.nonzero = 1;
+            }
+            if (!reduced && value > (SIZE_MAX - 1) / 2) {
+                value %= size;
+                reduced = 1;
+            }
+            value = value * 2 + digit;
+            if (reduced) {
+                value %= size;
+            }
         }
         pos += 4;
     }
-    return value;
+    out.magnitude = value;
+    return out;
 }
 
 static PyObject *
@@ -176,37 +208,48 @@ core_interpret(PyObject *module, PyObject *args, PyObject *kwargs)
         switch (code) {
         case 0:
         case 1: {
-            int sign;
-            size_t magnitude = read_literal(tape, size, ip, 0, &sign);
             if (ptrs[active] >= size) {
                 error = ERROR_DATA_RANGE;
             }
             else if (tape[ptrs[active]] == 0) {
+                Literal lit = read_literal(tape, size, ip, 0);
+                size_t magnitude = lit.magnitude;
+                if (magnitude >= size) {
+                    magnitude %= size;
+                }
                 size_t pos = ptrs[active];
-                if (sign > 0) {
-                    ptrs[active] = (pos + magnitude) % size;
+                size_t next = (lit.sign > 0) ? pos + magnitude
+                                             : pos + size - magnitude;
+                if (next >= size) {
+                    next -= size;
                 }
-                else {
-                    ptrs[active] = (pos + size - magnitude) % size;
-                }
+                ptrs[active] = next;
             }
             break;
         }
         case 3:
         case 4: {
-            int sign;
-            size_t magnitude = read_literal(tape, size, ip, 3, &sign);
             if (ptrs[active] >= size) {
                 error = ERROR_DATA_RANGE;
             }
             else if (tape[ptrs[active]] == 0) {
-                size_t delta = (magnitude * 4) % size;
-                if (sign > 0) {
-                    ip = (ip + delta) % size;
+                Literal lit = read_literal(tape, size, ip, 3);
+                if (!lit.nonzero) {
+                    break;
                 }
-                else {
-                    ip = (ip + size - delta) % size;
+                size_t magnitude = lit.magnitude;
+                if (magnitude >= size) {
+                    magnitude %= size;
                 }
+                size_t delta = magnitude * 4;
+                while (delta >= size) {
+                    delta -= size;
+                }
+                size_t next = (lit.sign > 0) ? ip + delta : ip + size - delta;
+                if (next >= size) {
+                    next -= size;
+                }
+                ip = next;
                 jumped = 1;
             }
             break;
