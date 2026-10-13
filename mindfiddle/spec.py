@@ -126,6 +126,12 @@ def interpret(program: str, data_tape: list, max_steps):
     POINTERS = Pointers(0, program_length, program_length)
     tape.extend(data_tape)
 
+    data_length = len(tape) - program_length
+    if data_length % 4 != 0:
+        raise ValueError(
+            f"data tape length must be divisible by 4, got {data_length}"
+        )
+
     for _ in range(max_steps):
         if not step(tape, POINTERS):
             break

@@ -35,7 +35,10 @@ def random_program(rng):
 
 
 def random_data_tape(rng):
-    length = rng.randint(1, MAX_DATA_TAPE_LENGTH)
+    if rng.random() < 0.15:
+        length = 4 * rng.randint(0, MAX_DATA_TAPE_LENGTH // 4 - 1) + rng.randint(1, 3)
+    else:
+        length = 4 * rng.randint(1, MAX_DATA_TAPE_LENGTH // 4)
     fill = rng.choice([NULLS, NULLS, ZEROS, MIXED])
 
     if fill == NULLS:
@@ -182,6 +185,7 @@ def main():
     )
     print("halted or ran:   ", stats["ok"])
     print("AssertionError:  ", stats["AssertionError"])
+    print("ValueError:      ", stats["ValueError"])
     print("IndexError:      ", stats["IndexError"])
     print("self modified:   ", stats["self_modified"])
     print("long literals:   ", literal_checks, "checks")

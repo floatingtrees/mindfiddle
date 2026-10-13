@@ -157,6 +157,14 @@ core_interpret(PyObject *module, PyObject *args, PyObject *kwargs)
     }
 
     Py_ssize_t data_tape_length = PySequence_Fast_GET_SIZE(data_seq);
+    if (data_tape_length % 4 != 0) {
+        PyErr_Format(PyExc_ValueError,
+                     "data tape length must be divisible by 4, got %zd",
+                     data_tape_length);
+        Py_DECREF(data_seq);
+        PyMem_Free(tape);
+        return NULL;
+    }
     size_t size = program_length + (size_t)data_tape_length;
 
     unsigned char *resized =
