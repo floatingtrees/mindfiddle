@@ -70,14 +70,20 @@ INST_DIGITS = {"a": 0, "b": 1}
 
 def read_literal(tape, start, digits):
     value = 0
+    sign = 1
     pos = start
+    leading = True
     while pos + 4 <= len(tape):
         symbol = binary_to_inst(tape[pos: pos + 4])
         if symbol not in digits:
             break
-        value = (value << 1) | digits[symbol]
+        if leading:
+            sign = -1 if digits[symbol] == 0 else 1
+            leading = False
+        else:
+            value = (value << 1) | digits[symbol]
         pos += 4
-    return value
+    return sign * value
 
 
 def step(tape, POINTERS):
@@ -87,13 +93,13 @@ def step(tape, POINTERS):
 
     match instruction:
         case "0" | "1":
-            target = read_literal(tape, POINTERS.INST_PTR, DATA_DIGITS)
+            offset = read_literal(tape, POINTERS.INST_PTR, DATA_DIGITS)
             if tape[POINTERS.data_ptr] == 0:
-                POINTERS.data_ptr = target % size
+                POINTERS.data_ptr = (POINTERS.data_ptr + offset) % size
         case "a" | "b":
-            target = read_literal(tape, POINTERS.INST_PTR, INST_DIGITS)
+            offset = read_literal(tape, POINTERS.INST_PTR, INST_DIGITS)
             if tape[POINTERS.data_ptr] == 0:
-                POINTERS.INST_PTR = (target * 4) % size
+                POINTERS.INST_PTR = (POINTERS.INST_PTR + offset * 4) % size
                 jumped = True
         case "s":
             POINTERS.ACTIVE = 2 if POINTERS.ACTIVE == 1 else 1

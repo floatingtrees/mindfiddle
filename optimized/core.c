@@ -70,24 +70,21 @@ read_literal(const unsigned char *tape, size_t size, size_t start, unsigned int 
 static PyObject *
 core_interpret(PyObject *module, PyObject *args, PyObject *kwargs)
 {
-    static char *keywords[] = {"program", "data_tape_length", "max_steps", NULL};
+    static char *keywords[] = {"program", "data_tape", "max_steps", NULL};
     PyObject *program_obj = NULL;
-    Py_ssize_t data_tape_length = 0;
+    PyObject *data_tape_obj = NULL;
     Py_ssize_t max_steps = 0;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Unn", keywords,
-                                     &program_obj, &data_tape_length, &max_steps)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "UOn", keywords,
+                                     &program_obj, &data_tape_obj, &max_steps)) {
         return NULL;
-    }
-    if (data_tape_length < 0) {
-        data_tape_length = 0;
     }
 
     Py_ssize_t symbol_count = PyUnicode_GET_LENGTH(program_obj);
     size_t program_length = (size_t)symbol_count * 4;
-    size_t size = program_length + (size_t)data_tape_length;
 
-    unsigned char *tape = (unsigned char *)PyMem_Malloc(size > 0 ? size : 1);
+    unsigned char *tape =
+        (unsigned char *)PyMem_Malloc(program_length > 0 ? program_length : 1);
     if (tape == NULL) {
         return PyErr_NoMemory();
     }
@@ -110,9 +107,43 @@ core_interpret(PyObject *module, PyObject *args, PyObject *kwargs)
         tape[base + 2] = (unsigned char)((code >> 1) & 1);
         tape[base + 3] = (unsigned char)(code & 1);
     }
-    if (data_tape_length > 0) {
-        memset(tape + program_length, 1, (size_t)data_tape_length);
+
+    PyObject *data_seq =
+        PySequence_Fast(data_tape_obj, "data_tape must be an iterable of bits");
+    if (data_seq == NULL) {
+        PyMem_Free(tape);
+        return NULL;
     }
+
+    Py_ssize_t data_tape_length = PySequence_Fast_GET_SIZE(data_seq);
+    size_t size = program_length + (size_t)data_tape_length;
+
+    unsigned char *resized =
+        (unsigned char *)PyMem_Realloc(tape, size > 0 ? size : 1);
+    if (resized == NULL) {
+        Py_DECREF(data_seq);
+        PyMem_Free(tape);
+        return PyErr_NoMemory();
+    }
+    tape = resized;
+
+    for (Py_ssize_t index = 0; index < data_tape_length; index++) {
+        PyObject *item = PySequence_Fast_GET_ITEM(data_seq, index);
+        long bit = PyLong_AsLong(item);
+        if (bit == -1 && PyErr_Occurred()) {
+            Py_DECREF(data_seq);
+            PyMem_Free(tape);
+            return NULL;
+        }
+        if (bit != 0 && bit != 1) {
+            Py_DECREF(data_seq);
+            PyMem_Free(tape);
+            PyErr_SetString(PyExc_ValueError, "data_tape values must be 0 or 1");
+            return NULL;
+        }
+        tape[program_length + (size_t)index] = (unsigned char)bit;
+    }
+    Py_DECREF(data_seq);
 
     int error = ERROR_NONE;
 

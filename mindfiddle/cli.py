@@ -13,7 +13,7 @@ def main():
     with open(args.program) as handle:
         program = "".join(handle.read().split())
 
-    inst_tape, data_tape = interpret(program, args.length, args.steps)
+    inst_tape, data_tape = interpret(program, [1] * args.length, args.steps)
 
     print("inst: ", "".join(inst_tape))
     print("data: ", "".join(str(bit) for bit in data_tape))
